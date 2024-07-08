@@ -2,7 +2,7 @@ import { WebSocketServer } from "ws";
 
 export function roomTemps() {
   const homeWss = new WebSocketServer({
-    port: 8080,
+    port: process.env.SOCKET_ROOM_TEMPS_PORT,
     verifyClient: (info) => {
       if (
         Object.hasOwnProperty.call(
@@ -19,12 +19,13 @@ export function roomTemps() {
     },
   });
   const clientWss = new WebSocketServer({
-    port: 8000,
+    port: process.env.SOCKET_CLIENT_PORT,
     verifyClient: (info) => {
       return true;
     },
   });
   const homeWssClients = {};
+  const clientList = [];
 
   homeWss.on("connection", (ws, req) => {
     const origin = req.headers.origin;
@@ -38,11 +39,20 @@ export function roomTemps() {
     ws.on("message", (data) => {
       console.log("received: %s", data);
     });
+    clientList.forEach((cWs) => {
+      cWs.send(
+        JSON.stringify({
+          action: "rooms",
+          data: Object.keys(homeWssClients),
+        })
+      );
+    });
 
     console.log(new Date(), "new connection:", origin);
   });
 
   clientWss.on("connection", (ws, req) => {
+    // todo: set uuid and clientList Obj to remove if connection is close
     ws.on("error", console.error);
 
     ws.on("message", (data) => {
@@ -65,11 +75,25 @@ export function roomTemps() {
           })
         );
         homeWssClients[paredData.room].on("message", (data) => {
-          ws.send(data);
+          try {
+            const roomData = JSON.parse(data);
+            ws.send(
+              JSON.stringify({
+                action: paredData.action,
+                room: paredData.room,
+                data: roomData,
+              })
+            );
+          } catch (e) {
+            console.error(e);
+          }
         });
       }
 
       console.log("received: %s", data);
     });
+
+    clientList.push(ws);
+    console.log(new Date(), "connection new client");
   });
 }
